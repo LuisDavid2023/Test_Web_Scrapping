@@ -22,4 +22,4 @@ jobs:
           pip install curl_cffi
 
       - name: Ejecutar Extractor
-        run: python scraper.py
+        run: python scrapper.py
