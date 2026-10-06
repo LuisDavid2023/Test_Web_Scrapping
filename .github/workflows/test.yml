@@ -1,10 +1,10 @@
-name: Prueba Aislada Scraper
+name: Despliegue Cloud Scraper Drayage
 
 on:
   workflow_dispatch:
 
 jobs:
-  ejecutar-scraper:
+  ejecutar-scraper-nube:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,6 +16,14 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Instalar Google Chrome en Ubuntu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl unzip libxi6 libgconf-2-4 libnss3
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get -f install -y
+          google-chrome --version
+
       - name: Instalar y conectar Cloudflare WARP (Modo Proxy)
         run: |
           sudo curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
@@ -26,10 +34,10 @@ jobs:
           warp-cli --accept-tos connect
           sleep 5
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias de Python
         run: |
           python -m pip install --upgrade pip
-          pip install curl_cffi
+          pip install selenium curl_cffi undetected-chromedriver
 
-      - name: Ejecutar Extractor
+      - name: Ejecutar Script Híbrido en la Nube
         run: python scrapper.py
