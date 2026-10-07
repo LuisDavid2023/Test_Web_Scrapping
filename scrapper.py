@@ -1,26 +1,51 @@
 import time
 import sys
+import subprocess
+import re
 from bs4 import BeautifulSoup
 import undetected_chromedriver as uc
 
-# Lista de estados intermodales objetivo que iteraremos por lotes
-ESTADOS_OBJETIVO = ["IL", "CA", "TX"]  # Puedes expandir esta lista según tus necesidades
+ESTADOS_OBJETIVO = ["IL", "CA", "TX"]
+
+def obtener_version_chrome_sistema():
+    """Detecta automáticamente la versión principal de Chrome instalada en el sistema operativo (Windows/Linux)."""
+    try:
+        if sys.platform.startswith("linux"):
+            cmd = ["google-chrome", "--version"]
+        else:
+            # Consulta robusta en el registro de Windows para entornos locales y runners de GitHub Actions
+            cmd = ["reg", "query", "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon", "/v", "version"]
+            
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        output = result.stdout + result.stderr
+        
+        # Si falla en HKCU en Windows, intentamos en HKLM (por si el runner usa instalación global)
+        if not output.strip() and not sys.platform.startswith("linux"):
+            cmd_alt = ["reg", "query", "HKEY_LOCAL_MACHINE\\SOFTWARE\\Google\\Chrome\\BLBeacon", "/v", "version"]
+            result_alt = subprocess.run(cmd_alt, capture_output=True, text=True, timeout=5)
+            output = result_alt.stdout + result_alt.stderr
+
+        match = re.search(r"(\d+)\.\d+\.\d+\.\d+", output)
+        if match:
+            version_mayor = int(match.group(1))
+            print(f"Versión de Chrome detectada en el sistema: {version_mayor}")
+            return version_mayor
+    except Exception as e:
+        print(f"Aviso en autodetección de versión: {e}")
+    
+    # Fallback estricto alineado con la versión actual detectada en el runner
+    return 154
 
 def extraer_tarifas_estado(driver, estado):
     url = f"https://www.drayage.com/directory/dray-rates.cfm?state={estado}"
     print(f"\nConsultando tarifas para el estado: {estado} -> URL: {url}")
     
     driver.get(url)
-    
-    # Pausa táctica de estabilización y resolución del desafío de Cloudflare por lote
-    time.sleep(10)
+    time.sleep(10) # Pausa táctica para el WAF de Cloudflare
     
     html_content = driver.page_source
-    
-    # Parseo y limpieza con BeautifulSoup (equivalente robusto a Cheerio en Python)
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Verificamos si Cloudflare bloqueó la sesión
     if "attention required" in soup.text.lower() or "cloudflare" in soup.text.lower():
         print(f"❌ Alerta: Cloudflare interceptó la sesión para el estado {estado}.")
         return []
@@ -29,7 +54,7 @@ def extraer_tarifas_estado(driver, estado):
     registros_limpios = []
     
     if tabla_tarifas:
-        filas = tabla_tarifas.find_all('tr')[1:] # Omitir encabezados
+        filas = tabla_tarifas.find_all('tr')[1:]
         for fila in filas:
             columnas = fila.find_all('td')
             if len(columnas) >= 4:
@@ -51,27 +76,29 @@ def main():
     print("Iniciando automatización autónoma en entorno Windows (Cloud)...")
     
     options = uc.ChromeOptions()
-    # En Windows Runner podemos correr con ventana minimizada o headless nativo seguro de Windows
-    options.headless = False # Windows maneja mejor el motor gráfico simulado
-    options.add_argument("--window-position=-2000,-2000") # Oculto fuera de pantalla
+    options.headless = False
+    options.add_argument("--window-position=-2000,-2000")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     
-    driver = uc.Chrome(options=options, use_subprocess=True)
+    # Inyectamos la versión detectada dinámicamente
+    version_sistema = obtener_version_chrome_sistema()
+    print(f"Configurando undetected-chromedriver con version_main={version_sistema}")
+    
+    driver = uc.Chrome(options=options, version_main=version_sistema, use_subprocess=True)
     
     try:
         todos_los_datos = []
         for estado in ESTADOS_OBJETIVO:
             datos_estado = extraer_tarifas_estado(driver, estado)
             todos_los_datos.extend(datos_estado)
-            # Pausa de cortesía entre peticiones por lotes para evitar baneo por tasa de solicitudes (Rate Limiting)
             time.sleep(5)
             
         print(f"\n--- RESUMEN GENERAL ---")
-        print(f"Total de registros limpios recolectados en todos los estados: {len(todos_los_datos)}")
-        print("Muestra del primer registro estructurado:")
+        print(f"Total de registros limpios recolectados: {len(todos_los_datos)}")
         if todos_los_datos:
+            print("Muestra del primer registro estructurado:")
             print(todos_los_datos[0])
             
     except Exception as e:
