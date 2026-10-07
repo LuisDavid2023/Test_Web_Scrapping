@@ -1,7 +1,7 @@
 import sys
 import io
 
-# Forzamos la codificación UTF-8 para evitar errores de caracteres especiales en Windows
+# Forzamos la codificación UTF-8 para evitar errores en Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
@@ -14,12 +14,12 @@ import undetected_chromedriver as uc
 ESTADOS_OBJETIVO = ["IL", "CA", "TX"]
 
 def obtener_version_chrome_sistema():
-    """Detecta automáticamente la versión principal de Chrome instalada en el sistema operativo."""
+    """Detecta automáticamente la versión principal de Chrome instalada en el sistema."""
     try:
         if sys.platform.startswith("linux"):
             cmd = ["google-chrome", "--version"]
         else:
-            cmd = ["reg", "query", "HKEY_CURRENT_USER\\Software\\Google\\Core\\Chrome\\BLBeacon", "/v", "version"]
+            cmd = ["reg", "query", "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon", "/v", "version"]
             
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         output = result.stdout + result.stderr
@@ -32,10 +32,10 @@ def obtener_version_chrome_sistema():
         match = re.search(r"(\d+)\.\d+\.\d+\.\d+", output)
         if match:
             version_mayor = int(match.group(1))
-            print(f"Version de Chrome detectada en el sistema: {version_mayor}")
+            print(f"Versión de Chrome detectada en el sistema: {version_mayor}")
             return version_mayor
     except Exception as e:
-        print(f"Aviso en autodeteccion de version: {e}")
+        print(f"Aviso en autodetección de versión: {e}")
     
     return 154
 
@@ -44,39 +44,49 @@ def extraer_tarifas_estado(driver, estado):
     print(f"\nConsultando tarifas para el estado: {estado} -> URL: {url}")
     
     driver.get(url)
-    time.sleep(10) # Pausa táctica para Cloudflare
+    time.sleep(10) # Pausa táctica para estabilización
     
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    if "attention required" in soup.text.lower() or "cloudflare" in soup.text.lower():
-        print(f"[ALERTA] Cloudflare interceptó la sesión para el estado {estado}.")
+    # Validación profesional: verificamos si apareció la pantalla de bloqueo de Cloudflare
+    if "attention required" in soup.text.lower():
+        print(f"[ALERTA] Cloudflare bloqueó la sesión para el estado {estado}.")
         return []
 
-    tabla_tarifas = soup.find('table')
+    # Buscamos exactamente las filas con la clase 'rowhoverhighlight' que identificamos en el DOM
+    filas = soup.find_all('tr', class_='rowhoverhighlight')
     registros_limpios = []
     
-    if tabla_tarifas:
-        filas = tabla_tarifas.find_all('tr')[1:]
-        for fila in filas:
-            columnas = fila.find_all('td')
-            if len(columnas) >= 4:
-                registro = {
-                    "origin": columnas[0].get_text(strip=True),
-                    "destination": columnas[1].get_text(strip=True),
-                    "state": estado,
-                    "rate": columnas[3].get_text(strip=True)
-                }
-                registros_limpios.append(registro)
-                
-        print(f"[EXITO] Se extrajeron {len(registros_limpios)} registros limpios para {estado}.")
-    else:
-        print(f"[AVISO] No se visualizo la tabla de tarifas para {estado}.")
-        
+    print(f"Filas encontradas con el selector DOM: {len(filas)}")
+    
+    for fila in filas:
+        columnas = fila.find_all('td')
+        if len(columnas) >= 5:
+            # Extraemos los campos limpios según la estructura visualizada en el inspector
+            origin = columnas[0].get_text(strip=True)
+            zip_code = columnas[1].get_text(strip=True)
+            state_dest = columnas[2].get_text(strip=True)
+            city_dest = columnas[3].get_text(strip=True)
+            
+            # La tarifa suele ubicarse en la celda con alineación derecha al final de la fila
+            rate_cell = fila.find('td', align='right')
+            rate = rate_cell.get_text(strip=True) if rate_cell else "N/A"
+            
+            registro = {
+                "origin": origin,
+                "zip_code": zip_code,
+                "state": state_dest if state_dest else estado,
+                "city": city_dest,
+                "rate": rate
+            }
+            registros_limpios.append(registro)
+            
+    print(f"[EXITO] Se extrajeron y limpiaron {len(registros_limpios)} registros para {estado}.")
     return registros_limpios
 
 def main():
-    print("Iniciando automatizacion autonoma en entorno Windows (Cloud)...")
+    print("Iniciando automatización autónoma en entorno Windows (Cloud)...")
     
     options = uc.ChromeOptions()
     options.headless = False
@@ -104,10 +114,10 @@ def main():
             print(todos_los_datos[0])
             
     except Exception as e:
-        print(f"Error critico en el proceso de scraping: {e}")
+        print(f"Error crítico en el proceso de scraping: {e}")
         sys.exit(1)
     finally:
-        print("Cerrando navegador autonomo...")
+        print("Cerrando navegador autónomo...")
         driver.quit()
 
 if __name__ == "__main__":
