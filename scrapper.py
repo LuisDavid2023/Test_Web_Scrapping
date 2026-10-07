@@ -1,7 +1,7 @@
 import sys
 import io
 
-# Forzamos la codificación UTF-8 para evitar errores de caracteres especiales en Windows
+# Forzamos la codificación UTF-8 para evitar errores en Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
@@ -10,8 +10,11 @@ import subprocess
 import re
 from bs4 import BeautifulSoup
 import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-ESTADOS_OBJETIVO = ["IL"] # Probemos inicialmente solo con IL para aislar la prueba y acelerar el log
+ESTADOS_OBJETIVO = ["IL", "CA", "TX"]
 
 def obtener_version_chrome_sistema():
     """Detecta automáticamente la versión principal de Chrome instalada en el sistema."""
@@ -44,22 +47,25 @@ def extraer_tarifas_estado(driver, estado):
     print(f"\nConsultando tarifas para el estado: {estado} -> URL: {url}")
     
     driver.get(url)
-    time.sleep(12) # Pausa para renderizado de la página
     
+    try:
+        # Sincronización inteligente: Esperamos hasta 25 segundos a que el WAF libere 
+        # la redirección y aparezca al menos una fila de la tabla en el DOM.
+        print("Esperando a que Cloudflare libere la página y cargue la tabla...")
+        WebDriverWait(driver, 25).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "tr.rowhoverhighlight"))
+        )
+        print("¡Tabla detectada correctamente en el DOM!")
+    except Exception as e:
+        print(f"[AVISO] Tiempo de espera agotado esperando la tabla para {estado}: {e}")
+    
+    # Extraemos el HTML una vez que los elementos están listos
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Imprimimos información vital de diagnóstico sobre lo que ve el navegador
-    print(f"[DEBUG] Título de la página obtenida: {soup.title.string if soup.title else 'Sin título'}")
-    
-    # Buscamos filas por la clase específica
     filas = soup.find_all('tr', class_='rowhoverhighlight')
-    print(f"[DEBUG] Filas encontradas con 'rowhoverhighlight': {len(filas)}")
+    print(f"Filas limpias capturadas para {estado}: {len(filas)}")
     
-    # Si no encuentra filas con la clase, imprimimos un fragmento del texto para analizarlo
-    if len(filas) == 0:
-        print("[DEBUG] Fragmento del texto de la página:", soup.get_text()[:300].replace('\n', ' '))
-
     registros_limpios = []
     for fila in filas:
         columnas = fila.find_all('td')
@@ -81,11 +87,11 @@ def extraer_tarifas_estado(driver, estado):
             }
             registros_limpios.append(registro)
             
-    print(f"[EXITO] Registros limpios extraídos para {estado}: {len(registros_limpios)}")
+    print(f"[EXITO] Se procesaron {len(registros_limpios)} registros para {estado}.")
     return registros_limpios
 
 def main():
-    print("Iniciando automatización con auditoría de DOM...")
+    print("Iniciando automatización con espera inteligente (WebDriverWait)...")
     
     options = uc.ChromeOptions()
     options.headless = False
@@ -102,14 +108,16 @@ def main():
         for estado in ESTADOS_OBJETIVO:
             datos_estado = extraer_tarifas_estado(driver, estado)
             todos_los_datos.extend(datos_estado)
+            time.sleep(3)
             
         print(f"\n--- RESUMEN GENERAL ---")
-        print(f"Total acumulado de registros: {len(todos_los_datos)}")
+        print(f"Total acumulado de registros recolectados: {len(todos_los_datos)}")
         if todos_los_datos:
-            print("Primer registro:", todos_los_datos[0])
+            print("Muestra del primer registro estructurado:")
+            print(todos_los_datos[0])
             
     except Exception as e:
-        print(f"Error crítico: {e}")
+        print(f"Error crítico en el proceso: {e}")
         sys.exit(1)
     finally:
         driver.quit()
