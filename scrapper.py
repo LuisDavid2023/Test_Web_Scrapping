@@ -1,7 +1,7 @@
 import sys
 import io
 
-# Forzamos la codificación UTF-8 para evitar errores en Windows
+# Forzamos la codificación UTF-8 para evitar errores de caracteres especiales en Windows (CI/CD)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
@@ -14,7 +14,7 @@ import undetected_chromedriver as uc
 ESTADOS_OBJETIVO = ["IL", "CA", "TX"]
 
 def obtener_version_chrome_sistema():
-    """Detecta automáticamente la versión principal de Chrome instalada en el sistema."""
+    """Detecta automáticamente la versión principal de Chrome instalada en el sistema operativo."""
     try:
         if sys.platform.startswith("linux"):
             cmd = ["google-chrome", "--version"]
@@ -32,10 +32,10 @@ def obtener_version_chrome_sistema():
         match = re.search(r"(\d+)\.\d+\.\d+\.\d+", output)
         if match:
             version_mayor = int(match.group(1))
-            print(f"Versión de Chrome detectada en el sistema: {version_mayor}")
+            print(f"Version de Chrome detectada en el sistema: {version_mayor}")
             return version_mayor
     except Exception as e:
-        print(f"Aviso en autodetección de versión: {e}")
+        print(f"Aviso en autodeteccion de version: {e}")
     
     return 154
 
@@ -44,32 +44,39 @@ def extraer_tarifas_estado(driver, estado):
     print(f"\nConsultando tarifas para el estado: {estado} -> URL: {url}")
     
     driver.get(url)
-    time.sleep(10) # Pausa táctica para estabilización
+    
+    # Espera ampliada a 15 segundos para asegurar la carga completa de la tabla y scripts
+    time.sleep(15)
     
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Validación profesional: verificamos si apareció la pantalla de bloqueo de Cloudflare
+    # Diagnóstico detallado para entender qué está cargando BeautifulSoup
+    todas_las_tablas = soup.find_all('table')
+    print(f"[DIAGNOSTICO] Tablas totales encontradas en el HTML: {len(todas_las_tablas)}")
+    
+    todas_las_filas = soup.find_all('tr')
+    print(f"[DIAGNOSTICO] Filas <tr> totales en la página: {len(todas_las_filas)}")
+
+    # Validación de bloqueo de Cloudflare
     if "attention required" in soup.text.lower():
         print(f"[ALERTA] Cloudflare bloqueó la sesión para el estado {estado}.")
         return []
 
-    # Buscamos exactamente las filas con la clase 'rowhoverhighlight' que identificamos en el DOM
+    # Búsqueda específica con la clase identificada en el DOM
     filas = soup.find_all('tr', class_='rowhoverhighlight')
     registros_limpios = []
     
-    print(f"Filas encontradas con el selector DOM: {len(filas)}")
+    print(f"Filas encontradas con la clase 'rowhoverhighlight': {len(filas)}")
     
     for fila in filas:
         columnas = fila.find_all('td')
-        if len(columnas) >= 5:
-            # Extraemos los campos limpios según la estructura visualizada en el inspector
+        if len(columnas) >= 4:
             origin = columnas[0].get_text(strip=True)
             zip_code = columnas[1].get_text(strip=True)
             state_dest = columnas[2].get_text(strip=True)
             city_dest = columnas[3].get_text(strip=True)
             
-            # La tarifa suele ubicarse en la celda con alineación derecha al final de la fila
             rate_cell = fila.find('td', align='right')
             rate = rate_cell.get_text(strip=True) if rate_cell else "N/A"
             
@@ -86,7 +93,7 @@ def extraer_tarifas_estado(driver, estado):
     return registros_limpios
 
 def main():
-    print("Iniciando automatización autónoma en entorno Windows (Cloud)...")
+    print("Iniciando automatizacion autonoma en entorno Windows (Cloud)...")
     
     options = uc.ChromeOptions()
     options.headless = False
@@ -114,10 +121,10 @@ def main():
             print(todos_los_datos[0])
             
     except Exception as e:
-        print(f"Error crítico en el proceso de scraping: {e}")
+        print(f"Error critico en el proceso de scraping: {e}")
         sys.exit(1)
     finally:
-        print("Cerrando navegador autónomo...")
+        print("Cerrando navegador autonomo...")
         driver.quit()
 
 if __name__ == "__main__":
