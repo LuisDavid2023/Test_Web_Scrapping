@@ -1,7 +1,7 @@
 import sys
 import io
 
-# Forzamos la codificación UTF-8 para evitar errores de caracteres especiales en Windows (CI/CD)
+# Forzamos la codificación UTF-8 para evitar errores de caracteres especiales en Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
@@ -11,10 +11,10 @@ import re
 from bs4 import BeautifulSoup
 import undetected_chromedriver as uc
 
-ESTADOS_OBJETIVO = ["IL", "CA", "TX"]
+ESTADOS_OBJETIVO = ["IL"] # Probemos inicialmente solo con IL para aislar la prueba y acelerar el log
 
 def obtener_version_chrome_sistema():
-    """Detecta automáticamente la versión principal de Chrome instalada en el sistema operativo."""
+    """Detecta automáticamente la versión principal de Chrome instalada en el sistema."""
     try:
         if sys.platform.startswith("linux"):
             cmd = ["google-chrome", "--version"]
@@ -32,10 +32,10 @@ def obtener_version_chrome_sistema():
         match = re.search(r"(\d+)\.\d+\.\d+\.\d+", output)
         if match:
             version_mayor = int(match.group(1))
-            print(f"Version de Chrome detectada en el sistema: {version_mayor}")
+            print(f"Versión de Chrome detectada en el sistema: {version_mayor}")
             return version_mayor
     except Exception as e:
-        print(f"Aviso en autodeteccion de version: {e}")
+        print(f"Aviso en autodetección de versión: {e}")
     
     return 154
 
@@ -44,31 +44,23 @@ def extraer_tarifas_estado(driver, estado):
     print(f"\nConsultando tarifas para el estado: {estado} -> URL: {url}")
     
     driver.get(url)
-    
-    # Espera ampliada a 15 segundos para asegurar la carga completa de la tabla y scripts
-    time.sleep(15)
+    time.sleep(12) # Pausa para renderizado de la página
     
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Diagnóstico detallado para entender qué está cargando BeautifulSoup
-    todas_las_tablas = soup.find_all('table')
-    print(f"[DIAGNOSTICO] Tablas totales encontradas en el HTML: {len(todas_las_tablas)}")
+    # Imprimimos información vital de diagnóstico sobre lo que ve el navegador
+    print(f"[DEBUG] Título de la página obtenida: {soup.title.string if soup.title else 'Sin título'}")
     
-    todas_las_filas = soup.find_all('tr')
-    print(f"[DIAGNOSTICO] Filas <tr> totales en la página: {len(todas_las_filas)}")
-
-    # Validación de bloqueo de Cloudflare
-    if "attention required" in soup.text.lower():
-        print(f"[ALERTA] Cloudflare bloqueó la sesión para el estado {estado}.")
-        return []
-
-    # Búsqueda específica con la clase identificada en el DOM
+    # Buscamos filas por la clase específica
     filas = soup.find_all('tr', class_='rowhoverhighlight')
+    print(f"[DEBUG] Filas encontradas con 'rowhoverhighlight': {len(filas)}")
+    
+    # Si no encuentra filas con la clase, imprimimos un fragmento del texto para analizarlo
+    if len(filas) == 0:
+        print("[DEBUG] Fragmento del texto de la página:", soup.get_text()[:300].replace('\n', ' '))
+
     registros_limpios = []
-    
-    print(f"Filas encontradas con la clase 'rowhoverhighlight': {len(filas)}")
-    
     for fila in filas:
         columnas = fila.find_all('td')
         if len(columnas) >= 4:
@@ -89,11 +81,11 @@ def extraer_tarifas_estado(driver, estado):
             }
             registros_limpios.append(registro)
             
-    print(f"[EXITO] Se extrajeron y limpiaron {len(registros_limpios)} registros para {estado}.")
+    print(f"[EXITO] Registros limpios extraídos para {estado}: {len(registros_limpios)}")
     return registros_limpios
 
 def main():
-    print("Iniciando automatizacion autonoma en entorno Windows (Cloud)...")
+    print("Iniciando automatización con auditoría de DOM...")
     
     options = uc.ChromeOptions()
     options.headless = False
@@ -103,8 +95,6 @@ def main():
     options.add_argument("--no-sandbox")
     
     version_sistema = obtener_version_chrome_sistema()
-    print(f"Configurando undetected-chromedriver con version_main={version_sistema}")
-    
     driver = uc.Chrome(options=options, version_main=version_sistema, use_subprocess=True)
     
     try:
@@ -112,19 +102,16 @@ def main():
         for estado in ESTADOS_OBJETIVO:
             datos_estado = extraer_tarifas_estado(driver, estado)
             todos_los_datos.extend(datos_estado)
-            time.sleep(5)
             
         print(f"\n--- RESUMEN GENERAL ---")
-        print(f"Total de registros limpios recolectados: {len(todos_los_datos)}")
+        print(f"Total acumulado de registros: {len(todos_los_datos)}")
         if todos_los_datos:
-            print("Muestra del primer registro estructurado:")
-            print(todos_los_datos[0])
+            print("Primer registro:", todos_los_datos[0])
             
     except Exception as e:
-        print(f"Error critico en el proceso de scraping: {e}")
+        print(f"Error crítico: {e}")
         sys.exit(1)
     finally:
-        print("Cerrando navegador autonomo...")
         driver.quit()
 
 if __name__ == "__main__":
