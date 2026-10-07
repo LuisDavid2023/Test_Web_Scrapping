@@ -1,5 +1,11 @@
-import time
 import sys
+import io
+
+# Forzamos la codificación UTF-8 para evitar errores de caracteres especiales en Windows
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+import time
 import subprocess
 import re
 from bs4 import BeautifulSoup
@@ -8,18 +14,16 @@ import undetected_chromedriver as uc
 ESTADOS_OBJETIVO = ["IL", "CA", "TX"]
 
 def obtener_version_chrome_sistema():
-    """Detecta automáticamente la versión principal de Chrome instalada en el sistema operativo (Windows/Linux)."""
+    """Detecta automáticamente la versión principal de Chrome instalada en el sistema operativo."""
     try:
         if sys.platform.startswith("linux"):
             cmd = ["google-chrome", "--version"]
         else:
-            # Consulta robusta en el registro de Windows para entornos locales y runners de GitHub Actions
-            cmd = ["reg", "query", "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon", "/v", "version"]
+            cmd = ["reg", "query", "HKEY_CURRENT_USER\\Software\\Google\\Core\\Chrome\\BLBeacon", "/v", "version"]
             
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         output = result.stdout + result.stderr
         
-        # Si falla en HKCU en Windows, intentamos en HKLM (por si el runner usa instalación global)
         if not output.strip() and not sys.platform.startswith("linux"):
             cmd_alt = ["reg", "query", "HKEY_LOCAL_MACHINE\\SOFTWARE\\Google\\Chrome\\BLBeacon", "/v", "version"]
             result_alt = subprocess.run(cmd_alt, capture_output=True, text=True, timeout=5)
@@ -28,12 +32,11 @@ def obtener_version_chrome_sistema():
         match = re.search(r"(\d+)\.\d+\.\d+\.\d+", output)
         if match:
             version_mayor = int(match.group(1))
-            print(f"Versión de Chrome detectada en el sistema: {version_mayor}")
+            print(f"Version de Chrome detectada en el sistema: {version_mayor}")
             return version_mayor
     except Exception as e:
-        print(f"Aviso en autodetección de versión: {e}")
+        print(f"Aviso en autodeteccion de version: {e}")
     
-    # Fallback estricto alineado con la versión actual detectada en el runner
     return 154
 
 def extraer_tarifas_estado(driver, estado):
@@ -41,13 +44,13 @@ def extraer_tarifas_estado(driver, estado):
     print(f"\nConsultando tarifas para el estado: {estado} -> URL: {url}")
     
     driver.get(url)
-    time.sleep(10) # Pausa táctica para el WAF de Cloudflare
+    time.sleep(10) # Pausa táctica para Cloudflare
     
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
     
     if "attention required" in soup.text.lower() or "cloudflare" in soup.text.lower():
-        print(f"❌ Alerta: Cloudflare interceptó la sesión para el estado {estado}.")
+        print(f"[ALERTA] Cloudflare interceptó la sesión para el estado {estado}.")
         return []
 
     tabla_tarifas = soup.find('table')
@@ -66,14 +69,14 @@ def extraer_tarifas_estado(driver, estado):
                 }
                 registros_limpios.append(registro)
                 
-        print(f"✅ Éxito: Se extrajeron {len(registros_limpios)} registros limpios para {estado}.")
+        print(f"[EXITO] Se extrajeron {len(registros_limpios)} registros limpios para {estado}.")
     else:
-        print(f"⚠️ No se visualizó la tabla de tarifas para {estado}.")
+        print(f"[AVISO] No se visualizo la tabla de tarifas para {estado}.")
         
     return registros_limpios
 
 def main():
-    print("Iniciando automatización autónoma en entorno Windows (Cloud)...")
+    print("Iniciando automatizacion autonoma en entorno Windows (Cloud)...")
     
     options = uc.ChromeOptions()
     options.headless = False
@@ -82,7 +85,6 @@ def main():
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     
-    # Inyectamos la versión detectada dinámicamente
     version_sistema = obtener_version_chrome_sistema()
     print(f"Configurando undetected-chromedriver con version_main={version_sistema}")
     
@@ -102,10 +104,10 @@ def main():
             print(todos_los_datos[0])
             
     except Exception as e:
-        print(f"Error crítico en el proceso de scraping: {e}")
+        print(f"Error critico en el proceso de scraping: {e}")
         sys.exit(1)
     finally:
-        print("Cerrando navegador autónomo...")
+        print("Cerrando navegador autonomo...")
         driver.quit()
 
 if __name__ == "__main__":
