@@ -1,11 +1,13 @@
-name: Despliegue Cloud Scraper Drayage
+name: Producción - Drayage Scraper Diario (Windows)
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: '0 10 * * 1-5' # Ejecución automática de lunes a viernes a las 5:00 a.m. hora de Colombia (10:00 UTC)
+  workflow_dispatch:       # Permite realizar pruebas manuales bajo demanda desde la interfaz de GitHub
 
 jobs:
-  ejecutar-scraper-nube:
-    runs-on: ubuntu-latest
+  scraper-windows-nube:
+    runs-on: windows-latest # Ejecutor Windows para garantizar la resolución autónoma del WAF de Cloudflare
 
     steps:
       - name: Clonar el repositorio
@@ -16,23 +18,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Verificar versión de Google Chrome preinstalado
-        run: google-chrome --version
-
-      - name: Instalar y conectar Cloudflare WARP (Modo Proxy)
-        run: |
-          sudo curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-          sudo apt-get update && sudo apt-get install -y cloudflare-warp
-          warp-cli --accept-tos registration new
-          warp-cli --accept-tos mode proxy
-          warp-cli --accept-tos connect
-          sleep 5
-
       - name: Instalar dependencias de Python
         run: |
           python -m pip install --upgrade pip
-          pip install selenium curl_cffi undetected-chromedriver
+          pip install selenium beautifulsoup4 undetected-chromedriver
 
-      - name: Ejecutar Script Híbrido en la Nube
+      - name: Ejecutar Scraper Autónomo por Lotes
         run: python scrapper.py
